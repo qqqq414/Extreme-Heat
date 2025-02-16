@@ -1,0 +1,117 @@
+library(lme4)
+library(parallel)
+library(dplyr) 
+# 广义Bootstrap函数
+bootstrap_ipw_gb <- function(data, indices, propensity_scores) {
+  # 从原始数据中抽取子样本
+  sampled_data <- data[indices, ]
+  
+  # 分离处理组和对照组
+  treated_data <- sampled_data[sampled_data$max_tem_35 == 1, ]
+  control_data <- sampled_data[sampled_data$max_tem_35 == 0, ]
+  
+  # 精确匹配原始倾向得分
+  treated_indices_original <- which(data$max_tem_35 == 1)
+  control_indices_original <- which(data$max_tem_35 == 0)
+  
+  treated_in_sampled <- indices %in% treated_indices_original
+  control_in_sampled <- indices %in% control_indices_original
+  
+  treated_data$propensity_score <- propensity_scores[indices[treated_in_sampled]]
+  control_data$propensity_score <- propensity_scores[indices[control_in_sampled]]
+  
+  # 计算加权概率
+  e_treated <- treated_data$propensity_score
+  e_control <- control_data$propensity_score
+  
+  p_treated <- (1 / e_treated) / sum(1 / e_treated)
+  p_control <- (1 / (1 - e_control)) / sum(1 / (1 - e_control))
+  
+  # 重采样处理组和对照组
+  resampled_treated <- treated_data[sample(1:nrow(treated_data), 
+                                           size = nrow(treated_data), 
+                                           replace = TRUE, 
+                                           prob = p_treated), ]
+  
+  resampled_control <- control_data[sample(1:nrow(control_data), 
+                                           size = nrow(control_data), 
+                                           replace = TRUE, 
+                                           prob = p_control), ]
+  
+  # 合并数据并计算权重
+  resampled_data <- rbind(resampled_treated, resampled_control)
+  resampled_data$weight <- ifelse(
+    resampled_data$max_tem_35 == 1,
+    1 / resampled_data$propensity_score,
+    1 / (1 - resampled_data$propensity_score)
+  )
+  
+  # 拟合混合效应模型
+  model <- lmer(
+    O3_8h_max_boxcox ~ max_tem_35 + dew_tem_scaled + slp_scaled + 
+      wd_scaled + wsr_scaled + sctc_scaled + lpd_scaled + (1 | site_id),
+    data = resampled_data,
+    weights = resampled_data$weight
+  )
+  
+  return(fixef(model)["max_tem_35"])
+}
+
+# 并行Bootstrap函数
+# 并行Bootstrap函数
+parallel_bootstrap_gb <- function(data, n_bootstrap, propensity_scores, output_dir) {
+  # 创建并行集群
+  cl <- makeCluster(detectCores() - 1)  # 使用所有核心 - 1
+  
+  # 确保 data 和其他相关对象能传递到每个节点
+  clusterExport(cl, c("data", "propensity_scores", "bootstrap_ipw_gb", "new_df"))
+  clusterEvalQ(cl, { 
+    library(lme4) 
+    # 其他需要加载的库或对象可以放在这里
+  })
+  
+  # 运行并行 bootstrap
+  bootstrap_results <- parSapply(cl, 1:n_bootstrap, function(i) {
+    indices <- sample(1:nrow(data), replace = TRUE)
+    bootstrap_ipw_gb(data, indices, propensity_scores)
+  })
+  
+  # 停止集群
+  stopCluster(cl)
+  
+  # 保存结果
+  saveRDS(bootstrap_results, file.path(output_dir, "bootstrap_results.rds"))
+  
+  return(bootstrap_results)
+}
+
+# 主程序
+set.seed(123)
+n_bootstrap <- 1000  # 建议设置为1000
+output_dir <- "/Users/swifty/Desktop"
+
+
+# 检查 new_df 是否存在
+if (!exists("new_df")) {
+  stop("new_df 未定义，请确保数据已加载。")
+}
+
+# 计算原始倾向得分
+library(logistf)
+
+model_ps_firth <- logistf(
+  max_tem_35 ~ latitude + observation_field_meter + month + tem_scaled + 
+    dew_tem_scaled + slp_scaled + wd_scaled + wsr_scaled + sctc_scaled + lpd_scaled,
+  data = new_df
+)
+#summary(model_ps_firth)
+propensity_scores <- predict(model_ps_firth, type = "response")
+
+# 运行Bootstrap
+bootstrap_results <- parallel_bootstrap_gb(new_df, n_bootstrap, propensity_scores, output_dir)
+
+# 输出结果
+cat("Bootstrap Results:\n",
+    "Mean Effect:", mean(bootstrap_results), "\n",
+    "SE:", sd(bootstrap_results), "\n",
+    "95% CI: [", quantile(bootstrap_results, 0.025), ",", quantile(bootstrap_results, 0.975), "]")
