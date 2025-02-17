@@ -123,3 +123,43 @@ cat("优化后的Bootstrap结果：\n",
 
 # 保存结果
 saveRDS(bootstrap_results, file.path(output_dir, "optimized_results.rds"))
+
+library(ggplot2)
+
+# 假设你的数据
+bootstrap_estimates <- bootstrap_results$estimates # 请根据实际情况调整
+ipw_estimate <- 2.246 # 假设这是IPW的估计结果
+
+# 计算Bootstrap的密度
+bootstrap_density <- density(bootstrap_estimates)
+ipw_density <- density(rep(ipw_estimate, length(bootstrap_estimates))) # IPW的密度是一个单一的估计值
+
+# 计算Bootstrap的均值
+bootstrap_mean <- mean(bootstrap_estimates)
+bootstrap_df <- data.frame(x = bootstrap_density$x, y = bootstrap_density$y, method = "Bootstrap")
+ipw_df <- data.frame(x = ipw_density$x, y = ipw_density$y, method = "IPW")
+
+# 绘制折线图和区域图
+ggplot() +
+  # 绘制Bootstrap分布的面积
+  geom_area(data = bootstrap_df, aes(x = x, y = y, fill = "Bootstrap"), alpha = 0.5) +
+  # 绘制IPW分布的面积
+  geom_area(data = ipw_df, aes(x = x, y = y, fill = "IPW"), alpha = 0.5) +
+  geom_line(data = bootstrap_df, aes(x = x, y = y, color = "Bootstrap"), size = 1) +
+  geom_line(data = ipw_df, aes(x = x, y = y, color = "IPW"), size = 1) +
+  geom_vline(aes(xintercept = ipw_estimate), color = "red", linetype = "dashed", size = 1) +
+  geom_vline(aes(xintercept = bootstrap_mean), color = "blue", linetype = "dashed", size = 1) +
+ 
+  labs(title = "Comparison of IPW and Generalized Bootstrap Distributions", 
+       x = "Estimated Effect of Extreme Heat on Ozone Concentration", 
+       y = "Density") +
+  scale_fill_manual(values = c("Bootstrap" = "blue", "IPW" = "red")) +
+  scale_color_manual(values = c("Bootstrap" = "blue", "IPW" = "red")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+    axis.title = element_text(size = 12),
+    legend.title = element_blank(),
+    legend.position = "top"
+  ) +
+  guides(fill = guide_legend(override.aes = list(alpha = 0.7)))  
