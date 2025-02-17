@@ -18,7 +18,7 @@ bootstrap_ipw_gb_optimized <- function(data, treated_idx, control_idx) {
   
   # 计算抽样概率
   p_treated <- (1/e_treated)/sum(1/e_treated)
-  p_control <- (1/(1 - e_control))/sum(1/(1 - e_control))
+  p_control <- (1/(1 - e_control))/sum(1/(1 - e_control[control_idx]))
   
   # 高效抽样
   resampled_treated <- sample(treated_idx, replace = TRUE, prob = p_treated)
