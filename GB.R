@@ -19,6 +19,10 @@ bootstrap_ipw_gb_optimized <- function(data, treated_idx, control_idx) {
   # 计算抽样概率
   p_treated <- (1/e_treated)/sum(1/e_treated)
   p_control <- (1/(1 - e_control))/sum(1/(1 - e_control))
+
+
+
+  p treated+control=1
   
   # 高效抽样
   resampled_treated <- sample(treated_idx, replace = TRUE, prob = p_treated)
@@ -35,7 +39,7 @@ bootstrap_ipw_gb_optimized <- function(data, treated_idx, control_idx) {
     mutate(
       weight = ifelse(
         max_tem_35 == 1,
-        1/propensity_score,
+        1/propensity_score,  1/nt*pi (sampling p)
         1/(1 - propensity_score)
       ),
       weight = pmin(weight, quantile(weight, 0.99, na.rm = TRUE))
