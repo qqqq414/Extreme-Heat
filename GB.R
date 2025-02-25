@@ -20,9 +20,15 @@ bootstrap_ipw_gb_optimized <- function(data, treated_idx, control_idx) {
   p_treated <- (1/e_treated)/sum(1/e_treated)
   p_control <- (1/(1 - e_control))/sum(1/(1 - e_control))
 
+# 校验概率和为1
+  if(abs(sum(p_treated) - 1) > 1e-6 || abs(sum(p_control) - 1) > 1e-6) {
+    warning("Probability normalization failed")
+    return(list(estimate = NA, convergence = FALSE))
+  }
 
-
-  p treated+control=1
+  # 获取原始样本量
+  nt <- length(treated_idx)
+  nc <- length(control_idx)
   
   # 高效抽样
   resampled_treated <- sample(treated_idx, replace = TRUE, prob = p_treated)
@@ -33,14 +39,17 @@ bootstrap_ipw_gb_optimized <- function(data, treated_idx, control_idx) {
     data[resampled_treated, ],
     data[resampled_control, ]
   )
+  # 获取重采样后样本量
+  nt_resampled <- sum(resampled_data$max_tem_35 == 1)
+  nc_resampled <- sum(resampled_data$max_tem_35 == 0)
   
-  # 计算权重
+  # 计算权重 1/nt*pi (sampling p)
   resampled_data <- resampled_data %>%
     mutate(
       weight = ifelse(
         max_tem_35 == 1,
-        1/propensity_score,  1/nt*pi (sampling p)
-        1/(1 - propensity_score)
+        (1/nt) * 1/(propensity_score * p_treated),
+        (1/nc) * 1/((1 - propensity_score) * p_control)
       ),
       weight = pmin(weight, quantile(weight, 0.99, na.rm = TRUE))
     )
